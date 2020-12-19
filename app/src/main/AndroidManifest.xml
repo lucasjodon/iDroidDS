@@ -33,6 +33,12 @@
                 <category android:name="tv.ouya.intent.category.GAME" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".TouchscreenActivity"
+            android:label="@string/title_activity_main"
+            android:launchMode="singleInstance"
+            android:taskAffinity="task.sub"
+            />
 
         <activity android:name=".FileDialog">
             <intent-filter>

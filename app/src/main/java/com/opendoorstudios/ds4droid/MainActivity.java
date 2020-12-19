@@ -19,6 +19,7 @@ package com.opendoorstudios.ds4droid;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.ActivityOptions;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.ProgressDialog;
@@ -27,6 +28,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.OnSharedPreferenceChangeListener;
 import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
@@ -55,6 +57,9 @@ import com.opendoorstudios.ds4droid.NDSScanner.CollectionActivity;
 import net.sf.sevenzipjbinding.SevenZip;
 import net.sf.sevenzipjbinding.SevenZipNativeInitializationException;
 
+import com.lge.display.DisplayManagerHelper;
+import com.lge.display.DisplayManagerHelper.SwivelStateCallback;
+
 import java.io.File;
 import java.util.Date;
 import java.util.Locale;
@@ -62,6 +67,13 @@ import java.util.Timer;
 import java.util.TimerTask;
 
 public class MainActivity extends Activity implements OnSharedPreferenceChangeListener {
+
+    /** Intent action for finish DualScreenActivity from swivel mode. */
+    static final String ACTION_FINISH_TOUCHACTIVITY = "com.lge.swivel.intent.action.touch.finish";
+    private DisplayManagerHelper mDisplayManagerHelper;
+    // private MySwivelStateCallback mSwivelStateCallback;
+    private boolean mIsLgSwivelDevice = false;
+    private LgSwivelStateCallback mSwivelStateCallback;
 
     public static final int PICK_ROM = 1338;
     public static final int LOADING_START = 1339;
@@ -135,8 +147,16 @@ public class MainActivity extends Activity implements OnSharedPreferenceChangeLi
         } catch (SevenZipNativeInitializationException e) {
             e.printStackTrace();
         }
-        if (IS_OUYA)
+        if (IS_OUYA){
             Log.i(TAG, "Starting in OUYA mode");
+        }
+        else if(hasLGSwivelFeature()) {
+            Log.i(TAG, "Starting in LG swivel mode");
+            mDisplayManagerHelper = new DisplayManagerHelper(this);
+            mIsLgSwivelDevice = true;
+            mSwivelStateCallback = new LgSwivelStateCallback();
+            mDisplayManagerHelper.registerSwivelStateCallback(mSwivelStateCallback);
+        }
 
         view = new NDSView(this);
         setContentView(view);
@@ -554,6 +574,20 @@ public class MainActivity extends Activity implements OnSharedPreferenceChangeLi
         }
     }
 
+    private boolean hasLGSwivelFeature(){
+        String feature = "com.lge.multiscreen";
+        PackageManager pm = getPackageManager();
+        if (!pm.hasSystemFeature(feature)){
+            return false;
+        }
+
+        if (!DisplayManagerHelper.isMultiDisplayDevice()){
+            return false;
+        }
+
+        return (DisplayManagerHelper.getMultiDisplayType() == DisplayManagerHelper.TYPE_SWIVEL);
+    }
+
     class NDSView extends SurfaceView implements Callback {
         final Paint emuPaint = new Paint();
         final Paint hudPaint = new Paint();
@@ -575,7 +609,7 @@ public class MainActivity extends Activity implements OnSharedPreferenceChangeLi
         boolean dontRotate = false;
         int sourceWidth;
         int sourceHeight;
-        Rect srcMain, destMain, srcTouch, destTouch;
+        Rect srcMain, destMain, srcTouch, destTouch; // destTouch should be moved to a secondary activity in swivel mode
         int width = 0, height = 0, pixelFormat;
         String stateText = null;
         long stateDrawStart = 0;
@@ -854,6 +888,43 @@ public class MainActivity extends Activity implements OnSharedPreferenceChangeLi
             MainActivity.this.openOptionsMenu();
         }
 
+    }
+
+    private void startTouchscreenActivity() {
+        Log.i(TAG, "Starting touchscreen activity");
+        Intent intent = new Intent(this, TouchscreenActivity.class);
+        ActivityOptions options = ActivityOptions.makeBasic();
+        // set Display ID where your activity will be launched
+        int launchDisplayId = mDisplayManagerHelper.getMultiDisplayId();
+        options.setLaunchDisplayId(launchDisplayId);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
+        startActivity(intent, options.toBundle());
+    }
+
+    private void stopTouchscreenActivity() {
+        Log.i(TAG, "Stoping touchscreen activity");
+        Intent intent = new Intent(ACTION_FINISH_TOUCHACTIVITY);
+        sendBroadcast(intent);
+    }
+
+    private class LgSwivelStateCallback extends SwivelStateCallback {
+        @Override
+        public void onSwivelStateChanged(int state) {
+            switch (state) {
+                case DisplayManagerHelper.SWIVEL_START:
+                    break;
+                case DisplayManagerHelper.SWIVEL_END:
+                    startTouchscreenActivity();
+                    break;
+                case DisplayManagerHelper.NON_SWIVEL_START:
+                    break;
+                case DisplayManagerHelper.NON_SWIVEL_END:
+                    stopTouchscreenActivity();
+                    break;
+                default:
+                    break;
+            }
+        }
     }
 
 }
